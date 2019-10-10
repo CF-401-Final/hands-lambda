@@ -1,7 +1,4 @@
-// Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
-
-const AWS = require('aws-sdk');
+/const AWS = require('aws-sdk');
 AWS.config.update({ region: process.env.AWS_REGION });
 var DDB = new AWS.DynamoDB({ apiVersion: "2012-10-08" });
 
@@ -18,25 +15,39 @@ exports.handler = async (event, context, callback) => {
   
   const postData = JSON.parse(event.body).data;
   console.log('postData', postData);
-  var putParams = {
+  if(postData.isInstructor){
+    console.log('i am instructor')
+    var putParams = {
     TableName: process.env.TABLE_NAME,
     Item: {
       connectionId: { S: event.requestContext.connectionId },
-      vote: { S: postData },
+      topic: { S: postData.topic },
       timeVoted: { S: Date.now().toString() }
     }
   };
 
-  await DDB.putItem(putParams, function (err) {
-    callback(null, {
-      statusCode: err ? 500 : 200,
-      body: err ? "Failed to connect: " + JSON.stringify(err) : "Connected."
-    });
-  });
+  let newItem = await DDB.putItem(putParams).promise();
+  console.log('newitem',newItem);
+  }else{
+    console.log(postData)
+  var putParams = {
+    TableName: process.env.TABLE_NAME,
+    Item: {
+      connectionId: { S: event.requestContext.connectionId },
+      vote: { S: postData.voteValue.toString() },
+      temperature: { S: postData.tempValue.toString() },
+      timeVoted: { S: Date.now().toString() }
+    }
+  };
+
+  let newItem = await DDB.putItem(putParams).promise();
+  console.log('newitem',newItem);
   
+  }
   
   
   try {
+    console.log('try');
     connectionData = await ddb.scan({ TableName: TABLE_NAME}).promise();
   } catch (e) {
     return { statusCode: 500, body: e.stack };
@@ -50,10 +61,22 @@ exports.handler = async (event, context, callback) => {
      threeCount: 0,
      fourCount: 0,
      fiveCount: 0,
-     totalConnections: 0
+     totalConnections: 0,
+     topic: 'Whats Your Understanding',
+     temperatureAvg: 2.5
    }
-  
+  let sum = 0;
+  let tally = 0;
    connectionData.Items.forEach(connection =>{
+     if(connection.topic && data.topic === 'Whats Your Understanding'){
+       data.topic = connection.topic;
+     }
+     if(connection.temperature){
+       tally++;
+       sum+=parseInt(connection.temperature);
+     }
+     
+     
      if(connection.vote){
        if(connection.vote === "0"){
          data.zeroCount++;
@@ -72,6 +95,9 @@ exports.handler = async (event, context, callback) => {
    })
   data.totalConnections = connectionData.Count;
      console.log('data',data);
+    
+  let avg = sum/tally;
+  data.temperatureAvg = avg;
    
   const apigwManagementApi = new AWS.ApiGatewayManagementApi({
     apiVersion: '2018-11-29',
@@ -98,6 +124,7 @@ exports.handler = async (event, context, callback) => {
   } catch (e) {
     return { statusCode: 500, body: e.stack };
   }
-
+ 
   return { statusCode: 200, body: 'Data sent.' };
+  
 };
